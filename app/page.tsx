@@ -1,171 +1,486 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import Appliances from './Appliances';
+import React, { useState, useCallback, useMemo } from "react";
+import {
+  FaBars,
+  FaQuestionCircle,
+  FaChevronDown,
+  FaChartLine,
+  FaChartBar,
+  FaChartArea,
+  FaFilePdf,
+} from "react-icons/fa";
+import dynamic from "next/dynamic";
+import Tooltip from "@mui/material/Tooltip";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip as ChartTooltip,
+  Legend,
+  Filler,
+} from "chart.js";
+import Image from "next/image";
+import { Line, Bar } from "react-chartjs-2";
 
-interface HistoryItem {
-  voltage: number;
-  current: number;
-  frequency: number;
-  timestamp: number;
-  appliances: { [key: string]: { isOn: boolean; power: number } };
-}
+// Registrar componentes do Chart.js
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  ChartTooltip,
+  Legend,
+  Filler
+);
 
-interface Appliance {
-  isOn: boolean;
-  power: number;
-}
+export default function Home() {
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [propriedadesAvancadas, setPropriedadesAvancadas] = useState(false);
+  const [tipoGrafico, setTipoGrafico] = useState<"linha" | "barra" | "area">(
+    "linha"
+  );
+  const [dados, setDados] = useState({
+    tensao: "",
+    corrente: "",
+    potencia: "",
+    frequencia: "",
+    potenciaAtiva: "",
+    potenciaReativa: "",
+    fatorPotencia: "",
+    demanda: "",
+    thdTensao: "",
+    thdCorrente: "",
+    potenciaCalculada: "",
+  });
+  const [arquivoPdf, setArquivoPdf] = useState<File | null>(null);
 
-const generateData = () => ({
-  voltage: 220.0,
-  current: 20.0,
-  frequency: 60.0,
-});
+  const alternarMenu = useCallback(() => setMenuAberto((prev) => !prev), []);
 
-const EnergyMonitor: React.FC = () => {
-  const [isClient, setIsClient] = useState(false);
-  const [currentData, setCurrentData] = useState(generateData());
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [appliances, setAppliances] = useState<{ [key: string]: Appliance }>({});
+  const alternarPropriedadesAvancadas = useCallback(
+    () => setPropriedadesAvancadas((prev) => !prev),
+    []
+  );
 
-  const colors = ['#8884d8', '#82ca9d', '#ff7300', '#ff0000', '#00ff00'];
+  const handleInputChange = (campo: string, valor: string) => {
+    // Regex melhorada para validação de números com decimais
+    const numeroRegex = /^-?\d*\.?\d*$/;
 
-  useEffect(() => {
-    setIsClient(true);
-    const interval = setInterval(() => {
-      const newData = generateData();
-      setCurrentData(newData);
-      setHistory(prev => {
-        const newHistory = [...prev, { ...newData, timestamp: Date.now(), appliances }];
-        return newHistory.slice(-10);
-      });
-    }, 1000);
+    if (!numeroRegex.test(valor) && valor !== "") {
+      return;
+    }
 
-    return () => clearInterval(interval);
-  }, [appliances]);
+    setDados((prev) => {
+      const novosDados = { ...prev, [campo]: valor };
 
-  const handleApplianceToggle = (name: string, isOn: boolean, power: number) => {
-    setAppliances(prev => ({
-      ...prev,
-      [name]: { isOn, power }
-    }));
+      // Calcular potência apenas se ambos os valores existirem
+      const tensao = parseFloat(campo === "tensao" ? valor : prev.tensao);
+      const corrente = parseFloat(campo === "corrente" ? valor : prev.corrente);
+
+      if (!isNaN(tensao) && !isNaN(corrente)) {
+        novosDados.potenciaCalculada = (tensao * corrente).toFixed(2);
+      } else {
+        novosDados.potenciaCalculada = "";
+      }
+
+      return novosDados;
+    });
   };
 
-  const totalAppliancePower = Object.values(appliances).reduce((sum, appliance) => sum + (appliance.isOn ? appliance.power : 0), 0);
-  const power = currentData.voltage * currentData.current - totalAppliancePower;
+  const dadosGrafico = {
+    labels: Array.from({ length: 50 }, (_, i) => i),
+    datasets: [
+      {
+        label: "Forma de Onda",
+        data: Array.from({ length: 50 }, (_, i) => Math.sin(i / 5) * 100),
+        borderColor: "#FF6B00",
+        backgroundColor:
+          tipoGrafico === "area" ? "rgba(255, 107, 0, 0.2)" : undefined,
+        fill: tipoGrafico === "area",
+        tension: 0.4,
+      },
+    ],
+  };
 
-  if (!isClient) {
-    return <div>Loading...</div>;
-  }
+  const opcoesGrafico = useMemo(
+    () => ({
+      responsive: true,
+      plugins: {
+        zoom: {
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: "xy",
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: "#f0f0f0" },
+          title: {
+            display: true,
+            text: "Tempo (ms)",
+          },
+        },
+        y: {
+          grid: { color: "#f0f0f0" },
+          title: {
+            display: true,
+            text: "Amplitude",
+          },
+        },
+      },
+    }),
+    []
+  );
+
+  const validarPdf = (arquivo: File | null): boolean => {
+    if (!arquivo) return false;
+    return (
+      arquivo.type === "application/pdf" && arquivo.size <= 10 * 1024 * 1024
+    ); // Limite de 10MB
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const arquivo = e.dataTransfer.files[0];
+    if (validarPdf(arquivo)) {
+      setArquivoPdf(arquivo);
+    } else {
+      alert("Por favor, selecione um arquivo PDF válido (máximo 10MB)");
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0];
+    if (validarPdf(arquivo)) {
+      setArquivoPdf(arquivo);
+    } else {
+      alert("Por favor, selecione um arquivo PDF válido (máximo 10MB)");
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!arquivoPdf) return;
+
+    try {
+      // Exemplo de implementação do upload
+      const formData = new FormData();
+      formData.append("pdf", arquivoPdf);
+
+      // Substituir com sua URL de API
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Falha no upload");
+
+      alert("Upload realizado com sucesso!");
+      setArquivoPdf(null);
+    } catch (erro) {
+      console.error("Erro no upload:", erro);
+      alert("Erro ao fazer upload do arquivo");
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <h1 className="text-3xl font-bold mb-8 text-center">Sistema de Energia com Eletrodomésticos</h1>
+    <div className="min-h-screen bg-[#F5F5F5]">
+      <header className="bg-white shadow-sm p-4">
+        <div className="container mx-auto flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <Image
+              src="/icone_apolo.png"
+              alt="Apolo Lab Logo" 
+              width={40}
+              height={40}
+              className="object-contain"
+            />
+            <h1 className="text-2xl font-bold text-[#FF6B00]">Apolo Lab</h1>
+          </div>
+          <button onClick={alternarMenu} className="md:hidden">
+            <FaBars className="text-2xl" />
+          </button>
+          <nav className={`${menuAberto ? "block" : "hidden"} md:block`}>
+            <ul className="md:flex space-x-6 text-gray-600">
+              <li className="cursor-pointer hover:text-[#FF6B00] transition-colors">
+                Dashboard
+              </li>
+              <li className="cursor-pointer hover:text-[#FF6B00] transition-colors">
+                Circuitos
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Valores Atuais</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="font-medium">Tensão:</p>
-              <p className="text-2xl">{currentData.voltage.toFixed(2)} V</p>
+      <div className="container mx-auto p-4">
+        <div className="grid md:grid-cols-5 gap-6">
+          {/* Área do Gráfico */}
+          <div className="md:col-span-3 space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-800">
+                Visualização do Circuito
+              </h2>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setTipoGrafico("linha")}
+                  className={`p-2 rounded ${
+                    tipoGrafico === "linha"
+                      ? "bg-[#FF6B00] text-white"
+                      : "bg-gray-200"
+                  }`}
+                >
+                  <FaChartLine />
+                </button>
+                <button
+                  onClick={() => setTipoGrafico("barra")}
+                  className={`p-2 rounded ${
+                    tipoGrafico === "barra"
+                      ? "bg-[#FF6B00] text-white"
+                      : "bg-gray-200"
+                  }`}
+                >
+                  <FaChartBar />
+                </button>
+                <button
+                  onClick={() => setTipoGrafico("area")}
+                  className={`p-2 rounded ${
+                    tipoGrafico === "area"
+                      ? "bg-[#FF6B00] text-white"
+                      : "bg-gray-200"
+                  }`}
+                >
+                  <FaChartArea />
+                </button>
+              </div>
             </div>
-            <div>
-              <p className="font-medium">Corrente:</p>
-              <p className="text-2xl">{currentData.current.toFixed(2)} A</p>
+            <div className="bg-white rounded-lg shadow-md p-4 h-[500px]">
+              {tipoGrafico === "barra" ? (
+                <Bar data={dadosGrafico} options={opcoesGrafico} />
+              ) : (
+                <Line data={dadosGrafico} options={opcoesGrafico} />
+              )}
             </div>
-            <div>
-              <p className="font-medium">Frequência:</p>
-              <p className="text-2xl">{currentData.frequency.toFixed(2)} Hz</p>
-            </div>
-            <div>
-              <p className="font-medium">Potência Gerada:</p>
-              <p className="text-2xl">{(currentData.voltage * currentData.current).toFixed(2)} W</p>
-            </div>
-            <div>
-              <p className="font-medium">Consumo dos Eletrodomésticos:</p>
-              <p className="text-2xl">{totalAppliancePower.toFixed(2)} W</p>
-            </div>
-            <div>
-              <p className="font-medium">Potência Líquida:</p>
-              <p className="text-2xl">{power.toFixed(2)} W</p>
+            <div className="mt-4 bg-white rounded-lg shadow-md p-4">
+              <h3 className="text-lg font-semibold mb-4">Upload de PDF</h3>
+
+              <div
+                onDrop={handleDrop}
+                onDragOver={(e) => e.preventDefault()}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#FF6B00] transition-colors"
+              >
+                <div className="space-y-4">
+                  <FaFilePdf className="mx-auto text-6xl text-gray-400" />
+                  <p className="text-gray-600">
+                    Arraste e solte seu PDF aqui ou
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="pdf-upload"
+                  />
+                  <label
+                    htmlFor="pdf-upload"
+                    className="inline-block px-4 py-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
+                  >
+                    Selecione um arquivo
+                  </label>
+                  {arquivoPdf && (
+                    <p className="text-sm text-gray-600">
+                      Arquivo selecionado: {arquivoPdf.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={handleUpload}
+                disabled={!arquivoPdf}
+                className={`mt-4 w-full p-2 rounded-lg ${
+                  arquivoPdf
+                    ? "bg-[#FF6B00] text-white hover:bg-[#FF5500]"
+                    : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                } transition-colors`}
+              >
+                Enviar PDF
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Gráfico de Potência</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={history}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="timestamp" tickFormatter={(tick) => new Date(tick).toLocaleTimeString()} />
-              <YAxis />
-              <Tooltip labelFormatter={(label) => new Date(label).toLocaleTimeString()} />
-              <Legend />
-              <Line type="monotone" dataKey="voltage" stroke="#8884d8" name="Tensão (V)" />
-              <Line type="monotone" dataKey="current" stroke="#82ca9d" name="Corrente (A)" />
-              {Object.keys(appliances).map((appliance, index) => (
-                <Line
-                  key={appliance}
-                  type="monotone"
-                  dataKey={`appliances.${appliance}.power`}
-                  stroke={colors[index % colors.length]}
-                  name={`${appliance} (W)`}
+          {/* Painel de Propriedades */}
+          <div className="md:col-span-2 space-y-4">
+            <h2 className="text-xl font-semibold text-gray-800">
+              Propriedades do Circuito
+            </h2>
+
+            <div className="space-y-4 bg-white p-6 rounded-lg shadow-md">
+              {/* Propriedades Básicas */}
+              <div className="space-y-4">
+                <div className="relative">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      placeholder="220V"
+                      value={dados.tensao}
+                      onChange={(e) =>
+                        handleInputChange("tensao", e.target.value)
+                      }
+                      className="w-full p-2 rounded-lg border border-gray-300 focus:border-[#FF6B00] focus:ring-1 focus:ring-[#FF6B00] outline-none"
+                    />
+                    <Tooltip
+                      title="Diferença de potencial elétrico entre dois pontos"
+                      arrow
+                    >
+                      <div className="text-gray-400 hover:text-gray-600 cursor-help">
+                        <FaQuestionCircle />
+                      </div>
+                    </Tooltip>
+                  </div>
+                  <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-600">
+                    Tensão
+                  </label>
+                </div>
+
+                <div className="relative">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      placeholder="10A"
+                      value={dados.corrente}
+                      onChange={(e) =>
+                        handleInputChange("corrente", e.target.value)
+                      }
+                      className="w-full p-2 rounded-lg border border-gray-300 focus:border-[#FF6B00] focus:ring-1 focus:ring-[#FF6B00] outline-none"
+                    />
+                    <Tooltip title="Fluxo de elétrons em um condutor" arrow>
+                      <div className="text-gray-400 hover:text-gray-600 cursor-help">
+                        <FaQuestionCircle />
+                      </div>
+                    </Tooltip>
+                  </div>
+                  <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-600">
+                    Corrente
+                  </label>
+                </div>
+
+                {dados.potenciaCalculada && (
+                  <div className="mt-2 p-2 bg-gray-100 rounded-lg text-center">
+                    <span className="text-gray-700">
+                      Potência Calculada: {dados.potenciaCalculada} W
+                    </span>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      placeholder="60Hz"
+                      value={dados.frequencia}
+                      onChange={(e) =>
+                        handleInputChange("frequencia", e.target.value)
+                      }
+                      className="w-full p-2 rounded-lg border border-gray-300 focus:border-[#FF6B00] focus:ring-1 focus:ring-[#FF6B00] outline-none"
+                    />
+                    <Tooltip title="Frequência da rede elétrica" arrow>
+                      <div className="text-gray-400 hover:text-gray-600 cursor-help">
+                        <FaQuestionCircle />
+                      </div>
+                    </Tooltip>
+                  </div>
+                  <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-600">
+                    Frequência
+                  </label>
+                </div>
+              </div>
+
+              {/* Botão Propriedades Avançadas */}
+              <button
+                onClick={alternarPropriedadesAvancadas}
+                className="w-full mt-4 p-2 bg-gray-100 text-gray-700 rounded-lg flex items-center justify-between hover:bg-gray-200 transition-colors"
+              >
+                <span>Propriedades Avançadas</span>
+                <FaChevronDown
+                  className={`transform transition-transform ${
+                    propriedadesAvancadas ? "rotate-180" : ""
+                  }`}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+              </button>
 
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-xl font-semibold mb-4">Eletrodomésticos</h2>
-        <Appliances onApplianceToggle={handleApplianceToggle} />
-      </div>
-
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4">Histórico</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full table-auto">
-            <thead>
-              <tr className="bg-gray-200">
-                <th className="px-4 py-2">Horário</th>
-                <th className="px-4 py-2">Tensão (V)</th>
-                <th className="px-4 py-2">Corrente (A)</th>
-                <th className="px-4 py-2">Frequência (Hz)</th>
-                <th className="px-4 py-2">Potência Gerada (W)</th>
-                <th className="px-4 py-2">Consumo Eletrodomésticos (W)</th>
-                <th className="px-4 py-2">Potência Líquida (W)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-4">Sem dados disponíveis</td>
-                </tr>
-              ) : (
-                history.map((item, index) => {
-                  const appliancePower = Object.values(item.appliances).reduce((sum, appliance) => sum + (appliance.isOn ? appliance.power : 0), 0);
-                  return (
-                    <tr key={index} className={index % 2 === 0 ? 'bg-gray-100' : ''}>
-                      <td className="px-4 py-2">{new Date(item.timestamp).toLocaleTimeString()}</td>
-                      <td className="px-4 py-2">{item.voltage.toFixed(2)}</td>
-                      <td className="px-4 py-2">{item.current.toFixed(2)}</td>
-                      <td className="px-4 py-2">{item.frequency.toFixed(2)}</td>
-                      <td className="px-4 py-2">{(item.voltage * item.current).toFixed(2)}</td>
-                      <td className="px-4 py-2">{appliancePower.toFixed(2)}</td>
-                      <td className="px-4 py-2">{(item.voltage * item.current - appliancePower).toFixed(2)}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+              {/* Propriedades Avançadas */}
+              <div
+                className={`space-y-4 overflow-hidden transition-all duration-300 ${
+                  propriedadesAvancadas ? "max-h-[500px]" : "max-h-0"
+                }`}
+              >
+                {[
+                  {
+                    campo: "potenciaAtiva",
+                    label: "Potência Ativa",
+                    placeholder: "2000W",
+                    tooltip: "Potência real consumida pela carga",
+                  },
+                  {
+                    campo: "potenciaReativa",
+                    label: "Potência Reativa",
+                    placeholder: "500VAR",
+                    tooltip: "Potência não convertida em trabalho",
+                  },
+                  {
+                    campo: "fatorPotencia",
+                    label: "Fator de Potência",
+                    placeholder: "0.92",
+                    tooltip: "Relação entre potência ativa e aparente",
+                  },
+                  {
+                    campo: "thdTensao",
+                    label: "THD Tensão",
+                    placeholder: "3%",
+                    tooltip: "Distorção harmônica total da tensão",
+                  },
+                  {
+                    campo: "thdCorrente",
+                    label: "THD Corrente",
+                    placeholder: "5%",
+                    tooltip: "Distorção harmônica total da corrente",
+                  },
+                ].map((prop) => (
+                  <div key={prop.campo} className="relative">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        placeholder={prop.placeholder}
+                        value={dados[prop.campo as keyof typeof dados]}
+                        onChange={(e) =>
+                          handleInputChange(prop.campo, e.target.value)
+                        }
+                        className="w-full p-2 rounded-lg border border-gray-300 focus:border-[#FF6B00] focus:ring-1 focus:ring-[#FF6B00] outline-none"
+                      />
+                      <Tooltip title={prop.tooltip} arrow>
+                        <div className="text-gray-400 hover:text-gray-600 cursor-help">
+                          <FaQuestionCircle />
+                        </div>
+                      </Tooltip>
+                    </div>
+                    <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-600">
+                      {prop.label}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default EnergyMonitor;
+}
