@@ -26,6 +26,7 @@ import {
 } from "chart.js";
 import Image from "next/image";
 import { Line, Bar } from "react-chartjs-2";
+import zoomPlugin from 'chartjs-plugin-zoom';
 
 // Registrar componentes do Chart.js
 ChartJS.register(
@@ -37,7 +38,8 @@ ChartJS.register(
   Title,
   ChartTooltip,
   Legend,
-  Filler
+  Filler,
+  zoomPlugin
 );
 
 export default function Home() {
@@ -112,13 +114,9 @@ export default function Home() {
     () => ({
       responsive: true,
       plugins: {
-        zoom: {
-          zoom: {
-            wheel: { enabled: true },
-            pinch: { enabled: true },
-            mode: "xy",
-          },
-        },
+        legend: {
+          display: true
+        }
       },
       scales: {
         x: {
@@ -159,7 +157,7 @@ export default function Home() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivo = e.target.files?.[0];
-    if (validarPdf(arquivo)) {
+    if (arquivo && validarPdf(arquivo)) {
       setArquivoPdf(arquivo);
     } else {
       alert("Por favor, selecione um arquivo PDF válido (máximo 10MB)");
