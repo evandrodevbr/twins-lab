@@ -10,7 +10,6 @@ import {
   FaChartArea,
   FaFilePdf,
 } from "react-icons/fa";
-import dynamic from "next/dynamic";
 import Tooltip from "@mui/material/Tooltip";
 import {
   Chart as ChartJS,
@@ -110,6 +109,8 @@ export default function Home() {
     ],
   };
 
+
+  // dadosGrafico.datasets[0].data = Array.from({ length: 50 }, (_, i) => Math.sin(i / 5) * 100);
   const opcoesGrafico = useMemo(
     () => ({
       responsive: true,
